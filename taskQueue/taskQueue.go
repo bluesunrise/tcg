@@ -84,6 +84,7 @@ func (q *TaskQueue) runQueue() {
 				})
 			}(task)
 		}
+
 		handler := q.handlers[task.Subject]
 		err := handler(task)
 		if alarmTimer != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type ExtConfig struct {
 	CheckInterval time.Duration                                          `json:"checkIntervalMinutes"`
 	Ownership     transit.HostOwnershipType                              `json:"ownership,omitempty"`
 	AuthType      AuthType                                               `json:"authType"`
+	//CAFile        string                                                 `json:"caFile"`
 
 	KubernetesUserName     string `json:"kubernetesUserName,omitempty"`
 	KubernetesUserPassword string `json:"kubernetesUserPassword,omitempty"`
@@ -57,7 +59,7 @@ const (
 	ClusterNameLabel                 = "alpha.eksctl.io/cluster-name"
 	PodsHostGroup                    = "pods-"
 	NamespaceDefault                 = "default"
-	defaultKubernetesClusterEndpoint = ""
+	defaultKubernetesClusterEndpoint = "https://192.168.59.101:8443"
 )
 
 type KubernetesConnector struct {
@@ -70,13 +72,17 @@ type KubernetesConnector struct {
 
 type Cluster struct {
 	Cl struct {
+		CAFile string `yaml:"certificate-authority"`
 		Server string `yaml:"server"`
 	} `yaml:"cluster"`
 }
 
 type User struct {
+	Name string `yaml:"name"`
 	User struct {
-		Token string `yaml:"token"`
+		Token      string `yaml:"token"`
+		ClientCert string `yaml:"client-certificate"`
+		ClientKey  string `yaml:"client-key"`
 	}
 }
 
@@ -109,16 +115,20 @@ func (connector *KubernetesConnector) Initialize(config ExtConfig) error {
 		AuthProvider:        nil,
 		AuthConfigPersister: nil,
 		ExecProvider:        nil,
-		TLSClientConfig:     rest.TLSClientConfig{},
-		UserAgent:           "",
-		DisableCompression:  false,
-		Transport:           nil,
-		WrapTransport:       nil,
-		QPS:                 0,
-		Burst:               0,
-		RateLimiter:         nil,
-		Timeout:             0,
-		Dial:                nil,
+		TLSClientConfig: rest.TLSClientConfig{
+			CAFile:   "",
+			CertFile: "",
+			KeyFile:  "",
+		},
+		UserAgent:          "",
+		DisableCompression: false,
+		Transport:          nil,
+		WrapTransport:      nil,
+		QPS:                0,
+		Burst:              0,
+		RateLimiter:        nil,
+		Timeout:            0,
+		Dial:               nil,
 	}
 
 	switch config.AuthType {
@@ -132,19 +142,34 @@ func (connector *KubernetesConnector) Initialize(config ExtConfig) error {
 		kConfig.BearerToken = extConfig.KubernetesBearerToken
 		log.Info().Msg("using Bearer Token auth")
 	case ConfigFile:
+		data, err := os.ReadFile(config.KubernetesConfigFile)
+		if err != nil {
+			return err
+		}
 		fConfig := KubernetesYaml{}
-		err := yaml.Unmarshal([]byte(config.KubernetesConfigFile), &fConfig)
+		//err := yaml.Unmarshal([]byte(config.KubernetesConfigFile), &fConfig)
+		err = yaml.Unmarshal(data, &fConfig)
 		if err != nil {
 			return err
 		}
 
-		if len(fConfig.Clusters) != 1 || len(fConfig.Users) != 1 ||
-			fConfig.Clusters[0].Cl.Server == "" || fConfig.Users[0].User.Token == "" || fConfig.Kind != "Config" {
+		// We only support a single user config at the moment.
+		// TODO use default k8s config and choose a Context to use
+		if len(fConfig.Clusters) != 1 || len(fConfig.Users) != 1 || fConfig.Kind != "Config" {
 			return errors.New("Invalid configuration file!")
 		}
 
-		kConfig.BearerToken = fConfig.Users[0].User.Token
-		kConfig.Host = fConfig.Clusters[0].Cl.Server
+		// Minikube uses TLS/Certificate Auth
+		if fConfig.Users[0].Name == "minikube" {
+			kConfig.CAFile = fConfig.Clusters[0].Cl.CAFile
+			kConfig.CertFile = fConfig.Users[0].User.ClientCert
+			kConfig.KeyFile = fConfig.Users[0].User.ClientKey
+			kConfig.Host = fConfig.Clusters[0].Cl.Server
+			kConfig.Username = fConfig.Users[0].Name
+		} else {
+			kConfig.BearerToken = fConfig.Users[0].User.Token
+			kConfig.Host = fConfig.Clusters[0].Cl.Server
+		}
 
 		log.Info().Msg("using YAML File auth")
 	}

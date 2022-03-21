@@ -2,10 +2,7 @@ package services
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -22,7 +19,6 @@ import (
 	"github.com/rs/zerolog/log"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/swaggo/gin-swagger/swaggerFiles"
-	"golang.org/x/crypto/blake2b"
 )
 
 // Controller implements AgentServices, Controllers interface
@@ -454,113 +450,113 @@ func (controller *Controller) version(c *gin.Context) {
 	c.JSON(http.StatusOK, config.GetBuildInfo())
 }
 
-func (controller *Controller) checkAccess(c *gin.Context) {
-	if config.GetConfig().IsConfiguringPMC() {
-		log.Info().Str("url", c.Request.URL.Redacted()).
-			Msg("omit access check on configuring PARENT_MANAGED_CHILD")
-		return
-	}
-	if len(controller.dsClient.HostName) == 0 && len(controller.gwClients) == 0 {
-		log.Info().Str("url", c.Request.URL.Redacted()).
-			Msg("omit access check on empty config")
-		return
-	}
+//func (controller *Controller) checkAccess(c *gin.Context) {
+//	if config.GetConfig().IsConfiguringPMC() {
+//		log.Info().Str("url", c.Request.URL.Redacted()).
+//			Msg("omit access check on configuring PARENT_MANAGED_CHILD")
+//		return
+//	}
+//if len(controller.dsClient.HostName) == 0 && len(controller.gwClients) == 0 {
+//	log.Info().Str("url", c.Request.URL.Redacted()).
+//		Msg("omit access check on empty config")
+//	return
+//}
+//
+//	/* check local pin */
+//	pin := controller.Connector.ControllerPin
+//	if len(pin) > 0 && pin == c.Request.Header.Get("X-PIN") {
+//		log.Debug().Str("url", c.Request.URL.Redacted()).
+//			Msg("access allowed with X-PIN")
+//		return
+//	}
+//
+//	hashFn := func(args ...string) (string, error) {
+//		h, err := blake2b.New512(nil)
+//		if err != nil {
+//			return "", err
+//		}
+//		for _, s := range args {
+//			if _, err := io.WriteString(h, s); err != nil {
+//				return "", err
+//			}
+//		}
+//		sum := h.Sum(nil)
+//		return hex.EncodeToString(sum[:]), nil
+//	}
+//
+//	/* check basic auth */
+//	if username, password, hasAuth := c.Request.BasicAuth(); hasAuth {
+//		var err error
+//		defer func() {
+//			if err == nil {
+//				log.Debug().Str("url", c.Request.URL.Redacted()).
+//					Str("username", username).
+//					Msg("access allowed with BASIC")
+//				return
+//			}
+//			log.Warn().Err(err).Str("url", c.Request.URL.Redacted()).
+//				Str("username", username).
+//				Msg("access disallowed with BASIC")
+//			c.AbortWithStatusJSON(http.StatusUnauthorized,
+//				gin.H{"error": err.Error()})
+//		}()
+//
+//if !(len(username) > 0 && len(password) > 0 && len(controller.gwClients) > 0) {
+//	err = fmt.Errorf("misconfigured BASIC auth")
+//	return
+//}
+//ck, err := hashFn(username, password)
+//if err == nil {
+//	if _, isCached := controller.authCache.Get(ck); !isCached {
+//		/* restrict by mutex for one-thread at one-time */
+//		controller.muBASIC.Lock()
+//		if _, isCached := controller.authCache.Get(ck); !isCached {
+//			if _, err = controller.gwClients[0].AuthenticatePassword(username, password); err == nil {
+//				err = controller.authCache.Add(ck, true, time.Hour)
+//			}
+//		}
+//		controller.muBASIC.Unlock()
+//	}
+//}
+//		return
+//	}
+//
+//	/* check gwos auth */
+//	gwosAppName := c.Request.Header.Get("GWOS-APP-NAME")
+//	gwosAPIToken := c.Request.Header.Get("GWOS-API-TOKEN")
+//	var err error
+//	defer func() {
+//		if err == nil {
+//			log.Debug().Str("url", c.Request.URL.Redacted()).
+//				Str("gwosAppName", gwosAppName).
+//				Msg("access allowed with GWOS")
+//			return
+//		}
+//		log.Warn().Err(err).Str("url", c.Request.URL.Redacted()).
+//			Str("gwosAppName", gwosAppName).
+//			Msg("access disallowed with GWOS")
+//		c.AbortWithStatusJSON(http.StatusUnauthorized,
+//			gin.H{"error": err.Error()})
+//	}()
 
-	/* check local pin */
-	pin := controller.Connector.ControllerPin
-	if len(pin) > 0 && pin == c.Request.Header.Get("X-PIN") {
-		log.Debug().Str("url", c.Request.URL.Redacted()).
-			Msg("access allowed with X-PIN")
-		return
-	}
-
-	hashFn := func(args ...string) (string, error) {
-		h, err := blake2b.New512(nil)
-		if err != nil {
-			return "", err
-		}
-		for _, s := range args {
-			if _, err := io.WriteString(h, s); err != nil {
-				return "", err
-			}
-		}
-		sum := h.Sum(nil)
-		return hex.EncodeToString(sum[:]), nil
-	}
-
-	/* check basic auth */
-	if username, password, hasAuth := c.Request.BasicAuth(); hasAuth {
-		var err error
-		defer func() {
-			if err == nil {
-				log.Debug().Str("url", c.Request.URL.Redacted()).
-					Str("username", username).
-					Msg("access allowed with BASIC")
-				return
-			}
-			log.Warn().Err(err).Str("url", c.Request.URL.Redacted()).
-				Str("username", username).
-				Msg("access disallowed with BASIC")
-			c.AbortWithStatusJSON(http.StatusUnauthorized,
-				gin.H{"error": err.Error()})
-		}()
-
-		if !(len(username) > 0 && len(password) > 0 && len(controller.gwClients) > 0) {
-			err = fmt.Errorf("misconfigured BASIC auth")
-			return
-		}
-		ck, err := hashFn(username, password)
-		if err == nil {
-			if _, isCached := controller.authCache.Get(ck); !isCached {
-				/* restrict by mutex for one-thread at one-time */
-				controller.muBASIC.Lock()
-				if _, isCached := controller.authCache.Get(ck); !isCached {
-					if _, err = controller.gwClients[0].AuthenticatePassword(username, password); err == nil {
-						err = controller.authCache.Add(ck, true, time.Hour)
-					}
-				}
-				controller.muBASIC.Unlock()
-			}
-		}
-		return
-	}
-
-	/* check gwos auth */
-	gwosAppName := c.Request.Header.Get("GWOS-APP-NAME")
-	gwosAPIToken := c.Request.Header.Get("GWOS-API-TOKEN")
-	var err error
-	defer func() {
-		if err == nil {
-			log.Debug().Str("url", c.Request.URL.Redacted()).
-				Str("gwosAppName", gwosAppName).
-				Msg("access allowed with GWOS")
-			return
-		}
-		log.Warn().Err(err).Str("url", c.Request.URL.Redacted()).
-			Str("gwosAppName", gwosAppName).
-			Msg("access disallowed with GWOS")
-		c.AbortWithStatusJSON(http.StatusUnauthorized,
-			gin.H{"error": err.Error()})
-	}()
-
-	if !(len(gwosAppName) > 0 && len(gwosAPIToken) > 0 && len(controller.dsClient.HostName) > 0) {
-		err = fmt.Errorf("misconfigured GWOS auth")
-		return
-	}
-	ck, err := hashFn(gwosAppName, gwosAPIToken)
-	if err == nil {
-		if _, isCached := controller.authCache.Get(ck); !isCached {
-			/* restrict by mutex for one-thread at one-time */
-			controller.muGWOS.Lock()
-			if _, isCached := controller.authCache.Get(ck); !isCached {
-				if err = controller.dsClient.ValidateToken(gwosAppName, gwosAPIToken); err == nil {
-					err = controller.authCache.Add(ck, true, time.Hour)
-				}
-			}
-			controller.muGWOS.Unlock()
-		}
-	}
-}
+//if !(len(gwosAppName) > 0 && len(gwosAPIToken) > 0 && len(controller.dsClient.HostName) > 0) {
+//	err = fmt.Errorf("misconfigured GWOS auth")
+//	return
+//}
+//ck, err := hashFn(gwosAppName, gwosAPIToken)
+//if err == nil {
+//	if _, isCached := controller.authCache.Get(ck); !isCached {
+//		/* restrict by mutex for one-thread at one-time */
+//		controller.muGWOS.Lock()
+//		if _, isCached := controller.authCache.Get(ck); !isCached {
+//			if err = controller.dsClient.ValidateToken(gwosAppName, gwosAPIToken); err == nil {
+//				err = controller.authCache.Add(ck, true, time.Hour)
+//			}
+//		}
+//		controller.muGWOS.Unlock()
+//	}
+//}
+//}
 
 func (controller *Controller) registerAPI1(router *gin.Engine, addr string, entrypoints []Entrypoint) {
 	swaggerURL := ginSwagger.URL("http://" + addr + "/swagger/doc.json")
@@ -572,7 +568,7 @@ func (controller *Controller) registerAPI1(router *gin.Engine, addr string, entr
 
 	/* private entrypoints */
 	apiV1Group := router.Group("/api/v1")
-	apiV1Group.Use(controller.checkAccess)
+	//apiV1Group.Use(controller.checkAccess)
 
 	apiV1Group.POST("/config", controller.config)
 	apiV1Group.POST("/events", controller.events)

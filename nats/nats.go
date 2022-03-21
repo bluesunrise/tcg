@@ -68,7 +68,7 @@ func StartServer(config Config) error {
 	natsOpts.MaxPayload = config.MaxPayload
 	natsOpts.HTTPHost = "0.0.0.0"
 	natsOpts.HTTPPort = config.MonitorPort
-	natsOpts.Port = natsd.RANDOM_PORT
+	natsOpts.Port = natsd.DEFAULT_PORT
 
 	stanOpts := stand.GetDefaultOptions().Clone()
 	stanOpts.ID = clusterID
@@ -169,6 +169,7 @@ func StartDispatcher(options []DispatcherOption) error {
 
 	d.durables.Flush()
 	for _, opt := range options {
+		log.Debug().Msgf("Processing Durable: %s", opt.DurableName)
 		if err := d.retryDurable(opt); err != nil {
 			return err
 		}

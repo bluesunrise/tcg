@@ -174,14 +174,15 @@ type Connector struct {
 
 // ConnectorDTO defines TCG Connector configuration
 type ConnectorDTO struct {
-	AgentID       string        `json:"agentId"`
-	AppName       string        `json:"appName"`
-	AppType       string        `json:"appType"`
-	TcgURL        string        `json:"tcgUrl"`
-	LogLevel      LogLevel      `json:"logLevel"`
-	Enabled       bool          `json:"enabled"`
-	DSConnection  DSConnection  `json:"dalekservicesConnection"`
-	GWConnections GWConnections `json:"groundworkConnections"`
+	AgentID        string         `json:"agentId"`
+	AppName        string         `json:"appName"`
+	AppType        string         `json:"appType"`
+	TcgURL         string         `json:"tcgUrl"`
+	LogLevel       LogLevel       `json:"logLevel"`
+	Enabled        bool           `json:"enabled"`
+	DSConnection   DSConnection   `json:"dalekservicesConnection"`
+	GWConnections  GWConnections  `json:"groundworkConnections"`
+	TCGConnections TCGConnections `json:"tcgConnections"`
 	// TODO: extend LoadConnectorDTO to handle more fields
 	// MonitorConnection MonitorConnectionDto
 	// MetricsProfile    MetricsProfileDto
@@ -189,6 +190,9 @@ type ConnectorDTO struct {
 
 // GWConnection defines Groundwork Connection configuration
 type GWConnection clients.GWConnection
+
+// GWConnection defines Groundwork Connection configuration
+type TCGConnection clients.TCGConnection
 
 // MarshalYAML implements yaml.Marshaler interface
 // overrides the password field
@@ -230,6 +234,19 @@ func (con *GWConnection) UnmarshalYAML(unmarshal func(interface{}) error) error 
 
 // Decode implements envconfig.Decoder interface
 // merges incoming value with existed structure
+func (con *TCGConnection) Decode(value string) error {
+	var overrides GWConnection
+	if err := yaml.Unmarshal([]byte(value), &overrides); err != nil {
+		return err
+	}
+	if overrides.HostName != "" {
+		con.HostName = overrides.HostName
+	}
+	return nil
+}
+
+// Decode implements envconfig.Decoder interface
+// merges incoming value with existed structure
 func (con *GWConnection) Decode(value string) error {
 	var overrides GWConnection
 	if err := yaml.Unmarshal([]byte(value), &overrides); err != nil {
@@ -252,6 +269,30 @@ func (con *GWConnection) Decode(value string) error {
 	}
 	if overrides.ResourceNamePrefix != "" {
 		con.ResourceNamePrefix = overrides.ResourceNamePrefix
+	}
+	return nil
+}
+
+// TCGConnections defines a set of configurations
+type TCGConnections []*TCGConnection
+
+// Decode implements envconfig.Decoder interface
+// merges incoming value with existing structure
+func (cons *TCGConnections) Decode(value string) error {
+	var overrides TCGConnections
+	if err := yaml.Unmarshal([]byte(value), &overrides); err != nil {
+		return err
+	}
+	if len(overrides) > len(*cons) {
+		buf := TCGConnections(make([]*TCGConnection, len(overrides)))
+		copy(buf, overrides)
+		copy(buf, *cons)
+		*cons = buf
+	}
+	for i, v := range overrides {
+		if v.HostName != "" {
+			(*cons)[i].HostName = v.HostName
+		}
 	}
 	return nil
 }
@@ -317,10 +358,11 @@ type Jaegertracing struct {
 
 // Config defines TCG Agent configuration
 type Config struct {
-	Connector     *Connector     `yaml:"connector"`
-	DSConnection  *DSConnection  `yaml:"dsConnection"`
-	GWConnections GWConnections  `yaml:"gwConnections"`
-	Jaegertracing *Jaegertracing `yaml:"jaegertracing"`
+	Connector      *Connector     `yaml:"connector"`
+	DSConnection   *DSConnection  `yaml:"dsConnection"`
+	GWConnections  GWConnections  `yaml:"gwConnections"`
+	TCGConnections TCGConnections `yaml:"tcgConnections"`
+	Jaegertracing  *Jaegertracing `yaml:"jaegertracing"`
 }
 
 func defaults() Config {
@@ -420,6 +462,7 @@ func (cfg *Config) loadConnector(data []byte) (*ConnectorDTO, error) {
 	cfg.Connector.LogLevel = dto.LogLevel
 	cfg.Connector.Enabled = dto.Enabled
 	cfg.GWConnections = dto.GWConnections
+	cfg.TCGConnections = dto.TCGConnections
 	if len(dto.DSConnection.HostName) != 0 {
 		cfg.DSConnection.HostName = dto.DSConnection.HostName
 	}
