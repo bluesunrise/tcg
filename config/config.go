@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	clients2 "github.com/gwos/tcg/clients"
 	"io"
 	"net"
 	"os"
@@ -191,8 +192,8 @@ type ConnectorDTO struct {
 // GWConnection defines Groundwork Connection configuration
 type GWConnection clients.GWConnection
 
-// GWConnection defines Groundwork Connection configuration
-type TCGConnection clients.TCGConnection
+// TCGConnection defines TCG Connection configuration
+type TCGConnection clients2.TCGConnection
 
 // MarshalYAML implements yaml.Marshaler interface
 // overrides the password field
@@ -235,7 +236,7 @@ func (con *GWConnection) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // Decode implements envconfig.Decoder interface
 // merges incoming value with existed structure
 func (con *TCGConnection) Decode(value string) error {
-	var overrides GWConnection
+	var overrides TCGConnection
 	if err := yaml.Unmarshal([]byte(value), &overrides); err != nil {
 		return err
 	}

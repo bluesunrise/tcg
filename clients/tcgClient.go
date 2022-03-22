@@ -55,7 +55,7 @@ type TCGClient struct {
 }
 
 func (client *TCGClient) SendData(ctx context.Context, payload []byte) ([]byte, error) {
-	log.Info().Msgf("Sending Metrics Data: %s", payload)
+	//log.Info().Msgf("Sending Metrics Data: %s", payload)
 	return nil, nil
 }
 

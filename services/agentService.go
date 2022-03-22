@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gwos/tcg/clients"
 	"github.com/gwos/tcg/config"
 	"github.com/gwos/tcg/logzer"
 	"github.com/gwos/tcg/nats"
-	"github.com/gwos/tcg/sdk/clients"
 	tcgerr "github.com/gwos/tcg/sdk/errors"
 	"github.com/gwos/tcg/sdk/transit"
 	"github.com/gwos/tcg/taskQueue"
@@ -671,7 +671,7 @@ func (service *AgentService) startTransport() error {
 	} else {
 		return sdErr
 	}
-	log.Debug().Msg("dispatcher started")
+	log.Info().Msg("Transport started")
 	return nil
 }
 
@@ -752,6 +752,7 @@ func (service *AgentService) initOTEL() {
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, propagation.Baggage{}))
 
-	clients.HookRequestContext = tracing.HookRequestContext
-	clients.GZIP = tracing.GZIP
+	// TODO Determine if this is needed and if there's a way to do it without the SDK
+	//clients.HookRequestContext = tracing.HookRequestContext
+	//clients.GZIP = tracing.GZIP
 }
