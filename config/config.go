@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	clients2 "github.com/gwos/tcg/clients"
 	"io"
 	"net"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	tcgclients "github.com/gwos/tcg/clients"
 	"github.com/gwos/tcg/logzer"
 	"github.com/gwos/tcg/sdk/clients"
 	"github.com/gwos/tcg/sdk/logper"
@@ -193,7 +193,7 @@ type ConnectorDTO struct {
 type GWConnection clients.GWConnection
 
 // TCGConnection defines TCG Connection configuration
-type TCGConnection clients2.TCGConnection
+type TCGConnection tcgclients.TCGConnection
 
 // MarshalYAML implements yaml.Marshaler interface
 // overrides the password field
