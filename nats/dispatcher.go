@@ -67,6 +67,7 @@ func getDispatcher() *natsDispatcher {
 // in case of some transient error (like networking issue)
 // it closes current subscription (doesn't unsubscribe) and plans retry
 func (d *natsDispatcher) handleError(subscription stan.Subscription, msg *stan.Msg, err error, opt DispatcherOption) {
+	log.Info().Err(err).Str("durableName", opt.DurableName)
 	logEvent := log.Info().Err(err).Str("durableName", opt.DurableName).
 		Func(func(e *zerolog.Event) {
 			if zerolog.GlobalLevel() <= zerolog.DebugLevel {
@@ -116,6 +117,7 @@ func (d *natsDispatcher) openDurable(opt DispatcherOption) error {
 		errSubs      error
 		subscription stan.Subscription
 	)
+
 	if subscription, errSubs = d.connDispatcher.Subscribe(
 		opt.Subject,
 		func(msg *stan.Msg) {
@@ -140,7 +142,7 @@ func (d *natsDispatcher) openDurable(opt DispatcherOption) error {
 			}
 			_ = msg.Ack()
 			_ = d.msgsDone.Add(ckDone, 0, 10*time.Minute)
-			log.Info().Str("durableName", opt.DurableName).
+			log.Debug().Str("durableName", opt.DurableName).
 				Func(func(e *zerolog.Event) {
 					if zerolog.GlobalLevel() <= zerolog.DebugLevel {
 						e.RawJSON("stan.data", msg.Data).

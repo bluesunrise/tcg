@@ -1,0 +1,32 @@
+apiVersion: v1
+clusters:
+- cluster:
+    certificate-authority: /home/sysop/.minikube/ca.crt
+    extensions:
+    - extension:
+        last-update: Mon, 07 Mar 2022 23:32:19 MST
+        provider: minikube.sigs.k8s.io
+        version: v1.25.2
+      name: cluster_info
+    server: https://192.168.59.101:8443
+  name: minikube
+contexts:
+- context:
+    cluster: minikube
+    extensions:
+    - extension:
+        last-update: Mon, 07 Mar 2022 23:32:19 MST
+        provider: minikube.sigs.k8s.io
+        version: v1.25.2
+      name: context_info
+    namespace: kube-system
+    user: minikube
+  name: minikube
+current-context: minikube
+kind: Config
+preferences: {}
+users:
+- name: minikube
+  user:
+    client-certificate: /home/sysop/.minikube/profiles/minikube/client.crt
+    client-key: /home/sysop/.minikube/profiles/minikube/client.key

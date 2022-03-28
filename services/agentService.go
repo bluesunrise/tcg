@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gwos/tcg/clients"
 	"github.com/gwos/tcg/config"
 	"github.com/gwos/tcg/logzer"
 	"github.com/gwos/tcg/nats"
-	"github.com/gwos/tcg/sdk/clients"
 	tcgerr "github.com/gwos/tcg/sdk/errors"
 	"github.com/gwos/tcg/sdk/transit"
 	"github.com/gwos/tcg/taskQueue"
@@ -37,11 +37,12 @@ type AgentService struct {
 
 	agentStats  *AgentStats
 	agentStatus *AgentStatus
-	dsClient    *clients.DSClient
-	gwClients   []*clients.GWClient
-	quitChan    chan struct{}
-	statsChan   chan statsCounter
-	taskQueue   *taskQueue.TaskQueue
+	//dsClient    *clients.DSClient
+	//gwClients   []*clients.GWClient
+	tcgClients []*clients.TCGClient
+	quitChan   chan struct{}
+	statsChan  chan statsCounter
+	taskQueue  *taskQueue.TaskQueue
 
 	tracerCache    *cache.Cache
 	tracerToken    []byte                   // gw tracing
@@ -102,7 +103,7 @@ func GetAgentService() *AgentService {
 				Nats:       StatusStopped,
 				Transport:  StatusStopped,
 			},
-			dsClient:    &clients.DSClient{DSConnection: (*clients.DSConnection)(config.GetConfig().DSConnection)},
+			//dsClient:    &clients.DSClient{DSConnection: (*clients.DSConnection)(config.GetConfig().DSConnection)},
 			quitChan:    make(chan struct{}, 1),
 			statsChan:   make(chan statsCounter),
 			tracerCache: cache.New(-1, -1),
@@ -127,7 +128,7 @@ func GetAgentService() *AgentService {
 			Str("BatchMetrics", agentService.BatchMetrics.String()).
 			Int("BatchMaxBytes", agentService.BatchMaxBytes).
 			Str("ControllerAddr", agentService.ControllerAddr).
-			Str("DSClient", agentService.dsClient.HostName).
+			//Str("DSClient", agentService.dsClient.HostName).
 			Msg("starting with config")
 	})
 
@@ -144,23 +145,25 @@ func (service *AgentService) DemandConfig() error {
 		/* expect the config api call */
 		return nil
 	}
-	if len(service.AgentID) == 0 || len(service.dsClient.HostName) == 0 {
-		log.Info().Msg("config server is not configured")
-		/* expect the config api call */
-		return nil
-	}
+	//if len(service.AgentID) == 0 || len(service.dsClient.HostName) == 0 {
+	//	log.Info().Msg("config server is not configured")
+	//	/* expect the config api call */
+	//	return nil
+	//}
 
-	go func() {
-		for i := 0; ; i++ {
-			if err := service.dsClient.Reload(service.AgentID); err != nil {
-				log.Err(err).Msg("config server is not available")
-				time.Sleep(time.Duration((i%4+1)*5) * time.Second)
-				continue
+	/*
+		go func() {
+			for i := 0; ; i++ {
+				if err := service.dsClient.Reload(service.AgentID); err != nil {
+					log.Err(err).Msg("config server is not available")
+					time.Sleep(time.Duration((i%4+1)*5) * time.Second)
+					continue
+				}
+				break
 			}
-			break
-		}
-		log.Info().Msg("config server found and connected")
-	}()
+			log.Info().Msg("config server found and connected")
+		}()
+	*/
 	return nil
 }
 
@@ -399,39 +402,19 @@ func (service *AgentService) updateStats(c statsCounter) {
 
 func (service *AgentService) makeDispatcherOptions() []nats.DispatcherOption {
 	var dispatcherOptions []nats.DispatcherOption
-	for _, gwClient := range service.gwClients {
+	for _, tcgClient := range service.tcgClients {
 		// TODO: filter the message by rules per gwClient
-		gwClient := gwClient /* hold loop var copy */
+		tcgClient := tcgClient
 		dispatcherOptions = append(
 			dispatcherOptions,
 			service.makeDispatcherOption(
-				fmt.Sprintf("#%s#%s#", subjDowntime, gwClient.HostName),
-				subjDowntime,
-				func(ctx context.Context, p natsPayload) error {
-					var err error
-					switch p.Type {
-					case typeClearInDowntime:
-						_, err = gwClient.ClearInDowntime(ctx, p.Payload)
-					case typeSetInDowntime:
-						_, err = gwClient.SetInDowntime(ctx, p.Payload)
-					default:
-						err = fmt.Errorf("%v: failed to process payload type %s:%s", nats.ErrDispatcher, p.Type, subjDowntime)
-					}
-					return err
-				},
-			),
-			service.makeDispatcherOption(
-				fmt.Sprintf("#%s#%s#", subjEvents, gwClient.HostName),
+				fmt.Sprintf("#%s#%s#", subjEvents, tcgClient.HostName),
 				subjEvents,
 				func(ctx context.Context, p natsPayload) error {
 					var err error
 					switch p.Type {
 					case typeEvents:
-						_, err = gwClient.SendEvents(ctx, p.Payload)
-					case typeEventsAck:
-						_, err = gwClient.SendEventsAck(ctx, p.Payload)
-					case typeEventsUnack:
-						_, err = gwClient.SendEventsUnack(ctx, p.Payload)
+						_, err = tcgClient.SendEvent(ctx, p.Payload)
 					default:
 						err = fmt.Errorf("%v: failed to process payload type %s:%s", nats.ErrDispatcher, p.Type, subjEvents)
 					}
@@ -439,17 +422,18 @@ func (service *AgentService) makeDispatcherOptions() []nats.DispatcherOption {
 				},
 			),
 			service.makeDispatcherOption(
-				fmt.Sprintf("#%s#%s#", subjInventoryMetrics, gwClient.HostName),
+				fmt.Sprintf("#%s#%s#", subjInventoryMetrics, tcgClient.HostName),
 				subjInventoryMetrics,
 				func(ctx context.Context, p natsPayload) error {
 					var err error
 					switch p.Type {
 					case typeInventory:
-						_, err = gwClient.SynchronizeInventory(ctx, service.fixTracerContext(p.Payload))
+						// We don't care about inventory data at collection
+						//_, err = tcgClient.SendData(ctx, p.Payload)
 					case typeMetrics:
-						_, err = gwClient.SendResourcesWithMetrics(ctx, service.fixTracerContext(p.Payload))
+						_, err = tcgClient.SendData(ctx, p.Payload)
 					default:
-						err = fmt.Errorf("%v: failed to process payload type %s:%s", nats.ErrDispatcher, p.Type, subjInventoryMetrics)
+						err = fmt.Errorf("%v: failed to process payload type %s:%s", nats.ErrDispatcher, p.Type, subjEvents)
 					}
 					return err
 				},
@@ -516,7 +500,7 @@ func (service *AgentService) config(data []byte) error {
 		Str("BatchMetrics", service.BatchMetrics.String()).
 		Int("BatchMaxBytes", service.BatchMaxBytes).
 		Str("ControllerAddr", service.ControllerAddr).
-		Str("DSClient", service.dsClient.HostName).
+		//Str("DSClient", service.dsClient.HostName).
 		Msg("loaded config")
 
 	// ensure nested services properly initialized
@@ -659,33 +643,35 @@ func (service *AgentService) stopNats() error {
 }
 
 func (service *AgentService) startTransport() error {
-	cons := make([]*config.GWConnection, 0)
-	for _, c := range config.GetConfig().GWConnections {
+	cons := make([]*config.TCGConnection, 0)
+	for _, c := range config.GetConfig().TCGConnections {
 		if c.Enabled {
 			cons = append(cons, c)
 		}
 	}
 	if len(cons) == 0 {
-		log.Warn().Msg("empty GWConnections")
+		log.Warn().Msg("empty TCGConnections")
 		return nil
 	}
+
 	/* Process clients */
-	gwClients := make([]*clients.GWClient, len(cons))
+	tcgClients := make([]*clients.TCGClient, len(cons))
 	for i := range cons {
-		gwClients[i] = &clients.GWClient{
-			AppName:      service.AppName,
-			AppType:      service.AppType,
-			GWConnection: (*clients.GWConnection)(cons[i]),
+		tcgClients[i] = &clients.TCGClient{
+			AppName:       service.AppName,
+			AppType:       service.AppType,
+			TCGConnection: (*clients.TCGConnection)(cons[i]),
 		}
 	}
-	service.gwClients = gwClients
+	service.tcgClients = tcgClients
+
 	/* Process dispatcher */
 	if sdErr := nats.StartDispatcher(service.makeDispatcherOptions()); sdErr == nil {
 		service.agentStatus.Transport = StatusRunning
 	} else {
 		return sdErr
 	}
-	log.Info().Msg("dispatcher started")
+	log.Info().Msg("Transport started")
 	return nil
 }
 
@@ -697,7 +683,7 @@ func (service *AgentService) stopTransport() error {
 		return err
 	}
 	service.agentStatus.Transport = StatusStopped
-	log.Info().Msg("dispatcher stopped")
+	log.Debug().Msg("dispatcher stopped")
 	return nil
 }
 
@@ -766,6 +752,7 @@ func (service *AgentService) initOTEL() {
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, propagation.Baggage{}))
 
-	clients.HookRequestContext = tracing.HookRequestContext
-	clients.GZIP = tracing.GZIP
+	// TODO Determine if this is needed and if there's a way to do it without the SDK
+	//clients.HookRequestContext = tracing.HookRequestContext
+	//clients.GZIP = tracing.GZIP
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -30,10 +31,18 @@ func main() {
 	transitService.RegisterConfigHandler(configHandler)
 	transitService.RegisterExitHandler(cancel)
 
-	log.Info().Msg("Waiting for configuration to be delivered ...")
-	if err := transitService.DemandConfig(); err != nil {
-		log.Err(err).Msg("Could not demand config")
+	// TODO Move this to the yaml config since it doesn't need to be passed from the server as json
+	const (
+		jsonConfigName = "./connectors/kubernetes-connector/tcg_config.json"
+	)
+
+	if data, err := os.ReadFile(jsonConfigName); err != nil {
+		log.Err(err).
+			Str("configFile", jsonConfigName).
+			Msg("could not read config")
 		return
+	} else {
+		configHandler(data)
 	}
 
 	if err := connectors.Start(); err != nil {
@@ -48,7 +57,6 @@ func main() {
 }
 
 func configHandler(data []byte) {
-	log.Info().Msg("Configuration received")
 	/* Init config with default values */
 	tExt := &ExtConfig{
 		EndPoint:  defaultKubernetesClusterEndpoint,
@@ -59,33 +67,16 @@ func configHandler(data []byte) {
 	tMonConn := &transit.MonitorConnection{Extensions: tExt}
 	tMetProf := &transit.MetricsProfile{}
 
+	log.Debug().Msgf("K8s Endpoint: %s", tExt.EndPoint)
+
 	if err := connectors.UnmarshalConfig(data, tMetProf, tMonConn); err != nil {
 		log.Err(err).Msg("Could not parse config")
 		return
 	}
 
-	if tMonConn.Extensions.(*ExtConfig).AuthType == ConfigFile {
-		if err := writeDataToFile([]byte(tMonConn.Extensions.(*ExtConfig).KubernetesConfigFile)); err != nil {
-			log.Err(err).Msg("Could not write to file")
-		}
-	}
-
 	/* Update config with received values */
 	tExt.Views[ViewNodes] = buildNodeMetricsMap(tMetProf.Metrics)
 	tExt.Views[ViewPods] = buildPodMetricsMap(tMetProf.Metrics)
-
-	gwConnections := config.GetConfig().GWConnections
-	if len(gwConnections) > 0 {
-		for _, conn := range gwConnections {
-			if conn.DeferOwnership != "" {
-				ownership := transit.HostOwnershipType(gwConnections[0].DeferOwnership)
-				if ownership != "" {
-					tExt.Ownership = ownership
-					break
-				}
-			}
-		}
-	}
 
 	extConfig, monitorConnection = tExt, tMonConn
 	monitorConnection.Extensions = extConfig
@@ -128,11 +119,17 @@ func periodicHandler() {
 				extConfig.Ownership,
 			)
 			// TODO: better way to assure sync completion?
-			log.Err(err).Msg("Sending inventory")
+			if err != nil {
+				log.Err(err).
+					Msg("Error Sending inventory")
+			}
 			time.Sleep(3 * time.Second)
 		}
 		err := connectors.SendMetrics(context.Background(), monitored, &groups)
-		log.Err(err).Msg("Sending metrics")
+		if err != nil {
+			log.Err(err).
+				Msg("Error Sending metrics")
+		}
 	}
 }
 
